@@ -5,23 +5,18 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import SGD
 
-# color = ['blue' if k == 0 else 'red' for k in Y]
-
-# plt.scatter(X[:, 0], X[:, 1], c=color)
-# plt.savefig('duas_luas.svg')
-
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
-def d_sigmoid(x):
-    pass
+def d_sigmoid(y):
+    return y * (1 - y)
 
 def tanh(x):
     return (np.exp(x) - np.exp(-x)) / (np.exp(x) + np.exp(-x))
 
-def d_tanh(gx):
-    return 1 - (gx ** 2)
+def d_tanh(y):
+    return 1 - (y ** 2)
 
 def simple_feed_foward(x, w0, w1, w2, b0, b1, b2):
     #forward
@@ -117,7 +112,7 @@ def train(x: np.ndarray, w0: np.ndarray, w1: np.ndarray, w2: np.ndarray, b0: np.
 
     grad_e = e #* grad_L
     grad_y30 = grad_e
-    grad_v4 = e * d_tanh(grad_y30)
+    grad_v4 = grad_y30 * d_sigmoid(y30)
     grad_s06 = grad_s24 = grad_s30 = grad_b2[0] = grad_v4
 
     grad_y02 = grad_s06 * w2[0]
@@ -161,7 +156,7 @@ def train(x: np.ndarray, w0: np.ndarray, w1: np.ndarray, w2: np.ndarray, b0: np.
 def main():
     # inicialização aleatória
 
-    X, Y = datasets.make_moons(100, noise=0.2, random_state=1801)
+    X, Y = datasets.make_moons(100, noise=0.2, random_state=42)
 
     w0 = np.random.rand(2, 2)
     w1 = np.random.rand(2, 2)
@@ -177,11 +172,13 @@ def main():
         out = simple_feed_foward(X[i], w0, w1, w2, b0, b1, b2)
         if out == Y[i]:
             acc += 1
+
     print(acc, "acurácia antes do treinamento")
 
     # gradiente descendente
     # epochs
-    for i in range(10000):
+
+    for i in range(10_000):
         loss = 0
 
         grad_w0 = np.zeros(w0.shape)
@@ -191,16 +188,13 @@ def main():
         grad_b1 = np.zeros(b1.shape)
         grad_b2 = np.zeros(b2.shape)
 
-        # batch?
         """
         Batch Gradient Descent. Batch Size = Size of Training Set
             Stochastic Gradient Descent. Batch Size = 1
             Mini-Batch Gradient Descent. 1 < Batch Size < Size of Training Set
         """
-        # sendo assim, por definicao temos um stochastic gradient descent
         for k in range(100):
             g_w0, g_b0, g_w1, g_b1, g_w2, g_b2, L = train(X[k], w0, w1, w2, b0, b1, b2, Y[k])
-
             grad_w0 += g_w0
             grad_w1 += g_w1
             grad_w2 += g_w2
@@ -216,10 +210,9 @@ def main():
         b1 -= taxa * grad_b1
         b2 -= taxa * grad_b2
 
-        if i % 1000 == 0:
+        if i % 100 == 0:
             print(i, loss)
 
-    # acurácia após o treinamento
     acc = 0
     for i in range(100):
         out = simple_feed_foward(X[i], w0, w1, w2, b0, b1, b2)
