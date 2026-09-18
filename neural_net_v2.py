@@ -1,16 +1,32 @@
-from IPython.display import clear_output
-import matplotlib.pyplot as plt
+import argparse
+from pathlib import Path
 
+import matplotlib.pyplot as plt
 from sklearn import datasets
 import numpy as np
-import matplotlib.pyplot as plt
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import SGD
 
+
+DEFAULT_EPOCHS = 10_000
+DEFAULT_NEURONS = 2
+DEFAULT_HIDDEN_LAYERS = 2
+DEFAULT_TOTAL_LAYERS = 3  # duas camadas ocultas + camada de saída
+DEFAULT_ACTIVATION = "tanh"
+ANALYSIS_DIR = Path(__file__).resolve().parent / "analises"
+_animation_figure = None
+
 def draw_step(active_node: str, step_name: str, values: dict, weights: dict, grads: dict = None, delay: float = 2.0):
-    clear_output(wait=True)
-    fig, ax = plt.subplots(figsize=(11, 5.5))
+    global _animation_figure
+    if _animation_figure is None or not plt.fignum_exists(_animation_figure.number):
+        _animation_figure, ax = plt.subplots(figsize=(11, 5.5))
+        plt.show(block=False)
+    else:
+        ax = _animation_figure.axes[0]
+        ax.clear()
+
+    fig = _animation_figure
     ax.axis('off')
     
     layer_x = [1, 3.5, 6, 8.5, 11]
@@ -68,7 +84,9 @@ def draw_step(active_node: str, step_name: str, values: dict, weights: dict, gra
     ax.set_title(f"Passo Atual: {step_name}", fontsize=11, fontweight='bold', pad=15)
     ax.set_xlim(0, 12)
     ax.set_ylim(0, 6)
-    plt.show()
+    # Mantém uma única janela e processa os eventos do backend do macOS.
+    fig.canvas.draw_idle()
+    fig.canvas.flush_events()
     plt.pause(delay)
 
 def sigmoid(x):
@@ -267,111 +285,176 @@ def train(x: np.ndarray, w0: np.ndarray, w1: np.ndarray, w2: np.ndarray, b0: np.
     
     return grad_w0, grad_b0, grad_w1, grad_b1, grad_w2, grad_b2, L
 
-def main():
-    # inicialização aleatória
+def _activation(name):
+    """Retorna a ativação e sua derivada (a derivada recebe a saída)."""
+    if name == "tanh":
+        return np.tanh, lambda value: 1 - value ** 2
+    if name == "sigmoid":
+        def sigmoid_stable(value):
+            value = np.clip(value, -500, 500)
+            return 1 / (1 + np.exp(-value))
+        return sigmoid_stable, lambda value: value * (1 - value)
+    if name == "relu":
+        return lambda value: np.maximum(0, value), lambda value: (value > 0).astype(float)
+    raise ValueError("A ativação deve ser tanh, sigmoid ou relu.")
 
-    samples: int = 1_000
-    X, y = datasets.make_moons(samples, noise=0.2, random_state=42)
 
-    gen: np.Generator = np.random.default_rng(42)
+def _prompt_int(label, default, minimum=1):
+    while True:
+        answer = input(f"{label} [padrão: {default}]: ").strip()
+        if not answer:
+            return default
+        try:
+            value = int(answer)
+            if value >= minimum:
+                return value
+        except ValueError:
+            pass
+        print(f"Informe um número inteiro maior ou igual a {minimum}.")
 
-    w0 = gen.random((2, 2))
-    w1 = gen.random((2, 2))
-    w2 = gen.random(2)
-    b0 = gen.random(2)
-    b1 = gen.random(2)
-    b2 = gen.random(1)
 
-    taxa = 0.01
+def get_config(args):
+    if args.non_interactive:
+        epochs, neurons = args.epochs, args.neurons
+        hidden_layers, total_layers = args.hidden_layers, args.layers
+        activation = args.activation
+    else:
+        print("\nParâmetros do experimento (pressione Enter para usar o padrão):")
+        epochs = _prompt_int("Número de épocas", DEFAULT_EPOCHS)
+        neurons = _prompt_int("Número de neurônios em cada camada oculta", DEFAULT_NEURONS)
+        hidden_layers = _prompt_int("Número de camadas ocultas", DEFAULT_HIDDEN_LAYERS)
+        total_layers = _prompt_int(
+            "Número total de camadas (ocultas + saída)", DEFAULT_TOTAL_LAYERS, 2
+        )
+        activation = input(
+            f"Função de ativação das camadas ocultas (tanh/sigmoid/relu) "
+            f"[padrão: {DEFAULT_ACTIVATION}]: "
+        ).strip().lower() or DEFAULT_ACTIVATION
 
-    acc = 0
-    for i in range(100):
-        out = forward(X[i], w0, w1, w2, b0, b1, b2)
-        if out == y[i]:
-            acc += 1
+    while total_layers != hidden_layers + 1:
+        message = (
+            "O número total de camadas deve ser igual ao número de camadas "
+            "ocultas + 1 (camada de saída)."
+        )
+        if args.non_interactive:
+            raise ValueError(message)
+        print(message)
+        total_layers = _prompt_int(
+            "Número total de camadas (ocultas + saída)", hidden_layers + 1, 2
+        )
+    _activation(activation)
+    return epochs, neurons, hidden_layers, total_layers, activation
 
-    print(acc, "acurácia antes do treinamento")
 
-    max_epochs: int = 10_000
+def train_network(X, y, epochs, neurons, hidden_layers, activation_name, learning_rate=0.01):
+    """Treina uma rede densa configurável e retorna pesos, perdas e acurácias."""
+    rng = np.random.default_rng(42)
+    activation, derivative = _activation(activation_name)
+    sizes = [X.shape[1]] + [neurons] * hidden_layers + [1]
+    weights = [rng.normal(0, 0.5, (sizes[i], sizes[i + 1])) for i in range(len(sizes) - 1)]
+    biases = [np.zeros(size) for size in sizes[1:]]
+    losses, accuracies = [], []
 
-    print("Iniciando animação passo a passo para a primeira amostra...")
-    
-    # Executa a visualização interativa apenas para a primeira amostra
-    train(X[0], w0, w1, w2, b0, b1, b2, y[0], debug_plot=True)
-    
-    # Desativa o modo interativo e fecha a janela para liberar o Python
-    plt.ioff()
+    for epoch in range(epochs):
+        indexes = rng.permutation(len(X))
+        epoch_loss = 0.0
+        for index in indexes:
+            activations = [X[index]]
+            for layer, (weight, bias) in enumerate(zip(weights, biases)):
+                z = activations[-1] @ weight + bias
+                activations.append(1 / (1 + np.exp(-np.clip(z, -500, 500))) if layer == len(weights) - 1 else activation(z))
+
+            error = activations[-1][0] - y[index]
+            epoch_loss += 0.5 * error ** 2
+            delta = np.array([error * activations[-1][0] * (1 - activations[-1][0])])
+            grad_weights = [None] * len(weights)
+            grad_biases = [None] * len(biases)
+            for layer in range(len(weights) - 1, -1, -1):
+                grad_weights[layer] = np.outer(activations[layer], delta)
+                grad_biases[layer] = delta
+                if layer:
+                    delta = (weights[layer] @ delta) * derivative(activations[layer])
+            for layer in range(len(weights)):
+                weights[layer] -= learning_rate * grad_weights[layer]
+                biases[layer] -= learning_rate * grad_biases[layer]
+
+        predictions = predict_network(X, weights, biases, activation_name)
+        losses.append(epoch_loss / len(X))
+        accuracies.append(np.mean(predictions == y))
+        if epoch % max(1, epochs // 10) == 0:
+            print(f"época {epoch + 1:5d}/{epochs}  perda={losses[-1]:.4f}  acurácia={accuracies[-1]:.3f}")
+    return weights, biases, losses, accuracies
+
+
+def predict_network(X, weights, biases, activation_name):
+    activation, _ = _activation(activation_name)
+    values = X
+    for layer, (weight, bias) in enumerate(zip(weights, biases)):
+        values = values @ weight + bias
+        values = 1 / (1 + np.exp(-np.clip(values, -500, 500))) if layer == len(weights) - 1 else activation(values)
+    return (values.ravel() >= 0.5).astype(int)
+
+
+def save_plots(losses, accuracies):
+    ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
+    epochs = np.arange(1, len(losses) + 1)
+    loss_path = ANALYSIS_DIR / "neural_net_v2_funcao_perda.png"
+    metrics_path = ANALYSIS_DIR / "neural_net_v2_acuracia.png"
+    plt.figure(figsize=(9, 5))
+    plt.plot(epochs, losses, color="#c0392b")
+    plt.title("Função de perda por época")
+    plt.xlabel("Época")
+    plt.ylabel("Perda MSE")
+    plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig(loss_path, dpi=150)
     plt.close()
-    
-    print("Animação concluída. Iniciando o treinamento pesado...")
+    plt.figure(figsize=(9, 5))
+    plt.plot(epochs, accuracies, color="#2980b9")
+    plt.title("Acurácia de treinamento por época")
+    plt.xlabel("Época")
+    plt.ylabel("Acurácia")
+    plt.ylim(0, 1.05)
+    plt.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig(metrics_path, dpi=150)
+    plt.close()
+    print(f"Gráficos salvos em: {loss_path} e {metrics_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Experimento didático de uma rede neural")
+    parser.add_argument("--non-interactive", action="store_true", help="usa os valores dos argumentos")
+    parser.add_argument("--skip-animation", action="store_true", help="não abre a animação passo a passo")
+    parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
+    parser.add_argument("--neurons", type=int, default=DEFAULT_NEURONS)
+    parser.add_argument("--hidden-layers", type=int, default=DEFAULT_HIDDEN_LAYERS)
+    parser.add_argument("--layers", type=int, default=DEFAULT_TOTAL_LAYERS)
+    parser.add_argument("--activation", choices=("tanh", "sigmoid", "relu"), default=DEFAULT_ACTIVATION)
+    args = parser.parse_args()
+    epochs, neurons, hidden_layers, _, activation = get_config(args)
+
+    X, y = datasets.make_moons(1_000, noise=0.2, random_state=42)
+    if not args.skip_animation:
+        print("Iniciando animação passo a passo para a primeira amostra...")
+        plt.ion()
+        gen = np.random.default_rng(42)
+        animation_weights = [gen.random((2, 2)), gen.random((2, 2)), gen.random(2)]
+        animation_biases = [gen.random(2), gen.random(2), gen.random(1)]
+        train(X[0], *animation_weights, *animation_biases, y[0], debug_plot=True)
+        plt.ioff()
+        plt.close("all")
+        _animation_figure = None
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=18)
-
-    losses = []
-
-    for epoch in range(max_epochs):
-        epoch_loss: float = 0.
-
-        batches = make_batches(X_train, y_train, gen)
-
-        for X_batch, y_batch in batches:
-            batch_size: int = len(X_batch)
-
-            grad_w0 = np.zeros(w0.shape)
-            grad_w1 = np.zeros(w1.shape)
-            grad_w2 = np.zeros(w2.shape)
-            grad_b0 = np.zeros(b0.shape)
-            grad_b1 = np.zeros(b1.shape)
-            grad_b2 = np.zeros(b2.shape)
-
-            """
-            Batch Gradient Descent. Batch Size = Size of Training Set
-                Stochastic Gradient Descent. Batch Size = 1
-                Mini-Batch Gradient Descent. 1 < Batch Size < Size of Training Set
-            """
-            for k in range(batch_size):
-                g_w0, g_b0, g_w1, g_b1, g_w2, g_b2, L = train(X_batch[k], w0, w1, w2, b0, b1, b2, y_batch[k])
-                grad_w0 += g_w0
-                grad_w1 += g_w1
-                grad_w2 += g_w2
-                grad_b0 += g_b0
-                grad_b1 += g_b1
-                grad_b2 += g_b2
-                epoch_loss += L
-
-            w0 -= taxa * grad_w0 / batch_size
-            w1 -= taxa * grad_w1 / batch_size
-            w2 -= taxa * grad_w2 / batch_size
-            b0 -= taxa * grad_b0 / batch_size
-            b1 -= taxa * grad_b1 / batch_size
-            b2 -= taxa * grad_b2 / batch_size
-
-        # Armazena a perda média por amostra na época
-        losses.append(epoch_loss / len(X_train))
-
-        if epoch % 100 == 0:
-            print(f"epoch {epoch:5d}  train={epoch_loss:.4f}")
-
-    acc_train = 0
-    n_train: int = len(X_train)
-
-    for i in range(n_train):
-        out = forward(X_train[i], w0, w1, w2, b0, b1, b2)
-        if out == y_train[i]:
-            acc_train += 1
-
-    acc_test: int = 0
-    n_test: int = len(X_test)
-    for i in range(n_test):
-        out = forward(X_test[i], w0, w1, w2, b0, b1, b2)
-        if out == y_test[i]:
-            acc_test += 1
-
-
-    print(f"\nacc treino: {acc_train}/{n_train} = {acc_train/n_train:.3f}")
-    print(f"acc val:    {acc_test}/{n_test} = {acc_test/n_test:.3f}")
-
-    train_with_keras(taxa, X_train, y_train, batch_size=5)
+    weights, biases, losses, accuracies = train_network(
+        X_train, y_train, epochs, neurons, hidden_layers, activation
+    )
+    train_accuracy = np.mean(predict_network(X_train, weights, biases, activation) == y_train)
+    test_accuracy = np.mean(predict_network(X_test, weights, biases, activation) == y_test)
+    print(f"\nAcurácia treino: {train_accuracy:.3f}")
+    print(f"Acurácia teste:  {test_accuracy:.3f}")
+    save_plots(losses, accuracies)
 
 
 def make_batches(X, y, rng, batch_size: int = 16):
