@@ -170,11 +170,7 @@ def main():
 
     taxa = 0.01
 
-    acc = 0
-    for i in range(100):
-        out = forward(X[i], w0, w1, w2, b0, b1, b2)
-        if out == y[i]:
-            acc += 1
+    _, acc = accuracy(X, y, w0, w1, w2, b0, b1, b2)
 
     print(acc, "acurácia antes do treinamento")
 
@@ -223,24 +219,12 @@ def main():
         if epoch % 100 == 0:
             print(f"epoch {epoch:5d}  train={epoch_loss:.4f}")
 
-    acc_train = 0
-    n_train: int = len(X_train)
+    correct_train, acc_train = accuracy(X_train, y_train, w0, w1, w2, b0, b1, b2)
 
-    for i in range(n_train):
-        out = forward(X_train[i], w0, w1, w2, b0, b1, b2)
-        if out == y_train[i]:
-            acc_train += 1
+    correct_test, acc_test = accuracy(X_test, y_test, w0, w1, w2, b0, b1, b2)
 
-    acc_test: int = 0
-    n_test: int = len(X_test)
-    for i in range(n_test):
-        out = forward(X_test[i], w0, w1, w2, b0, b1, b2)
-        if out == y_test[i]:
-            acc_test += 1
-
-
-    print(f"\nacc treino: {acc_train}/{n_train} = {acc_train/n_train:.3f}")
-    print(f"acc val:    {acc_test}/{n_test} = {acc_test/n_test:.3f}")
+    print(f"acc treino: {correct_train}/{len(X_train)} = {acc_train:.3f}")
+    print(f"acc teste:    {correct_test}/{len(X_test)} = {acc_test:.3f}")
 
     train_with_keras(taxa, X_train, y_train, batch_size=5)
 
@@ -280,5 +264,15 @@ def train_with_keras(learning_rate: float, X: np.ndarray, Y: np.ndarray, batch_s
     model.fit(X, Y, epochs=100, verbose=False, batch_size=batch_size)
 
     model.evaluate(X, Y)
+
+def accuracy(X: np.ndarray, y: np.ndarray, w0: np.ndarray, w1: np.ndarray, w2: np.ndarray, b0: np.ndarray, b1: np.ndarray, b2: np.ndarray):
+    acc: int = 0
+    L: int = len(X)
+    for i in range(L):
+        predicted = forward(X[i], w0, w1, w2, b0, b1, b2)
+        if predicted == y[i]:
+            acc += 1
+
+    return acc, acc/L
 
 main()
