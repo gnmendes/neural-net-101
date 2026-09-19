@@ -62,36 +62,39 @@ def train(x: np.ndarray, w0: np.ndarray, w1: np.ndarray, w2: np.ndarray, b0: np.
     """
         O calculo do "processamento" de um neuronio é dado por Y = peso * amostra + vies
     """
+
+    # features passadas para o primeiro neuronio da 1 camada
     s00 = w0[0, 0] * x[0]
     s01 = w0[0, 1] * x[1]
     s02 = s00 + s01
     v0 = s02 + b0[0]
-    y01 = y00 = tanh(v0)
+    y00 = tanh(v0)
 
     s03 = y00 * w1[0, 0]
-    s04 = y01 * w1[0, 1]
+    s04 = y00 * w1[0, 1]
     s05 = s03 + s04
-
     v2 = s05 + b1[0]
     y02 = tanh(v2)
 
     s06 = y02 * w2[0]
     #### parte de cima do desenho
 
+    # features passadas para o segundo neuronio da 1 camada
     s10 = w0[1, 0] * x[0]
     s11 = w0[1, 1] * x[1]
     s12 = s10 + s11
     v1 = s12 + b0[1]
-    y10 = y11 = tanh(v1)
+    y10 = tanh(v1)
 
     s20 = y10 * w1[1, 0]
-    s21 = y11 * w1[1, 1]
+    s21 = y10 * w1[1, 1]
     s23 = s20 + s21
     v3 = s23 + b1[1]
     y12 = tanh(v3)
+    s24 = y12 * w2[1]
+
     ### parte de baixo
 
-    s24 = y12 * w2[1]
     s30 = s06 + s24
     v4 = s30 + b2[0]
 
@@ -99,7 +102,7 @@ def train(x: np.ndarray, w0: np.ndarray, w1: np.ndarray, w2: np.ndarray, b0: np.
 
     e = y30 - d
 
-    L = 1/2 * (e ** 2)
+    L = 0.5 * (e ** 2)
 
     grad_w0 = np.zeros(w0.shape)
     grad_w1 = np.zeros(w1.shape)
@@ -110,51 +113,54 @@ def train(x: np.ndarray, w0: np.ndarray, w1: np.ndarray, w2: np.ndarray, b0: np.
 
     grad_L = 1
 
-    grad_e = e #* grad_L
+    grad_e = e * grad_L
     grad_y30 = grad_e
     grad_v4 = grad_y30 * d_sigmoid(y30)
-    grad_s06 = grad_s24 = grad_s30 = grad_b2[0] = grad_v4
+    grad_b2[0] = grad_v4
 
-    grad_y02 = grad_s06 * w2[0]
-    grad_w2[0] = grad_s06 * y02
+    # parte de cima do desenho
+    grad_y02 = grad_v4 * w2[0]
+    grad_w2[0] = grad_v4 * y02
+
     grad_v2 = grad_y02 * d_tanh(y02)
-    grad_s03 = grad_s04 = grad_s05 = grad_b1[0] = grad_v2
+    grad_b1[0] = grad_v2
 
-    grad_w1[0, 1] = grad_s04 * y01
-    grad_y01 = grad_s04 * w1[0, 1]
 
-    grad_w1[0, 0] = grad_s03 * y00
-    grad_y00 = grad_s03 * w1[0, 0]
+    grad_w1[0, 1] = grad_v2 * y00
+    grad_y00_b = grad_v2 * w1[0, 1]
 
-    grad_v0 = (grad_y00 + grad_y01) * d_tanh(y00)
+    grad_w1[0, 0] = grad_v2 * y00
+    grad_y00_a = grad_v2 * w1[0, 0]
 
-    grad_s00 = grad_s01 = grad_s02 = grad_b0[0] = grad_v0
+    grad_v0 = (grad_y00_a + grad_y00_b) * d_tanh(y00)
+    grad_b0[0] = grad_v0
 
-    grad_w0[0, 1] = grad_s01 * x[1]
-    grad_w0[0, 0] = grad_s00 * x[0]
+    grad_w0[0, 0] = grad_v0 * x[0]
+    grad_w0[0, 1] = grad_v0 * x[1]
 
-    grad_w2[1] = grad_s24 * y12
-    grad_y12 = grad_s24 * w2[1]
+    # para de baixo do desenho
+    grad_w2[1] = grad_v4 * y12
+    grad_y12 = grad_v4 * w2[1]
 
-    grad_s20 = grad_s21 = grad_s23 = grad_b1[1] = grad_v3 = grad_y12 * d_tanh(y12)
+    grad_v3 = grad_y12 * d_tanh(y12)
+    grad_b1[1] = grad_v3
 
-    grad_w1[1, 1] = grad_s21 * y11
-    grad_y11 = grad_s21 * w1[1, 1]
+    grad_w1[1, 1] = grad_v3 * y10
+    grad_y10_b = grad_v3 * w1[1, 1]
 
-    grad_y10 = grad_s20 * w1[1, 0]
-    grad_w1[1, 0] = grad_s20 * y10
+    grad_y10_a = grad_v3 * w1[1, 0]
+    grad_w1[1, 0] = grad_v3 * y10
 
-    grad_v1 = (grad_y10 + grad_y11) * d_tanh(y10)
+    grad_v1 = (grad_y10_a + grad_y10_b) * d_tanh(y10)
 
-    grad_s10 = grad_s11 = grad_s12 = grad_b0[1] = grad_v1
+    grad_b0[1] = grad_v1
 
-    grad_w0[1, 0] = grad_s10 * x[0]
-    grad_w0[1, 1] = grad_s11 * x[1]
+    grad_w0[1, 0] = grad_v1 * x[0]
+    grad_w0[1, 1] = grad_v1 * x[1]
     
     return grad_w0, grad_b0, grad_w1, grad_b1, grad_w2, grad_b2, L
 
 def main():
-    # inicialização aleatória
 
     samples: int = 1_000
     X, y = datasets.make_moons(samples, noise=0.2, random_state=42)
@@ -174,7 +180,7 @@ def main():
 
     print(acc, "acurácia antes do treinamento")
 
-    max_epochs: int = 10_000
+    max_epochs: int = 1_500
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=18)
 
@@ -216,17 +222,20 @@ def main():
             b1 -= taxa * grad_b1 / batch_size
             b2 -= taxa * grad_b2 / batch_size
 
-        if epoch % 100 == 0:
-            print(f"epoch {epoch:5d}  train={epoch_loss:.4f}")
+        if epoch % 1000 == 0:
+            print(f"epoch {epoch:5d}  train={epoch_loss / len(X_train):.4f}")
+
+        #https://www.baeldung.com/cs/early-stopping-regularization
+        #https://www.deeplearningbook.com.br/usando-early-stopping-para-definir-o-numero-de-epocas-de-treinamento/
 
     correct_train, acc_train = accuracy(X_train, y_train, w0, w1, w2, b0, b1, b2)
 
     correct_test, acc_test = accuracy(X_test, y_test, w0, w1, w2, b0, b1, b2)
 
     print(f"acc treino: {correct_train}/{len(X_train)} = {acc_train:.3f}")
-    print(f"acc teste:    {correct_test}/{len(X_test)} = {acc_test:.3f}")
+    print(f"acc teste:  {correct_test}/{len(X_test)}   = {acc_test:.3f}")
 
-    train_with_keras(taxa, X_train, y_train, batch_size=5)
+    train_with_keras(taxa, X_train, y_train)
 
 
 def make_batches(X, y, rng, batch_size: int = 16):
