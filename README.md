@@ -12,6 +12,12 @@ python -m pip install -r requirements.txt
 
 ## Execução
 
+```bash
+python nn.py
+```
+
+## Execução: versão interativa
+
 Execução interativa com os valores padrão:
 
 ```bash
@@ -43,7 +49,7 @@ Os gráficos e o relatório comparativo ficam em [`analises/`](analises/). O arq
 
 ---
 
-refs:
+## Referências
 - https://www.learnpytorch.io/02_pytorch_classification/
 - https://en.wikipedia.org/wiki/Activation_function#Table_of_activation_functions
 - https://www.baeldung.com/cs/early-stopping-regularization
