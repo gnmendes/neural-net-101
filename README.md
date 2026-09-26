@@ -30,6 +30,17 @@ Os parâmetros padrão são 10.000 épocas, 2 neurônios em cada camada oculta, 
 
 Os gráficos e o relatório comparativo ficam em [`analises/`](analises/). O arquivo [`relatorio_comparativo_neural_net_v2.md`](analises/relatorio_comparativo_neural_net_v2.md) documenta as quatro rodadas realizadas e seus resultados. A melhor configuração observada foi a quarta: 6.000 épocas, 4 neurônios por camada, 4 camadas ocultas, 5 camadas totais e `tanh`.
 
+--
+
+## Integrantes do Grupo
+
+- Gabriel Nascimento Mendes
+- Kamilla Fernandes
+- Raimundo Matheus Pereira
+- Raphael Alves da Silva
+- Paulo Monteiro
+- Vinicius Teodoro
+
 ---
 
 refs:
